@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Pre-Compose window theme. Compose (Material3) drives the actual UI colors.
+         Luxe black status bar + white launch background. -->
+    <style name="Theme.WMS" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">#141414</item>
+        <item name="android:windowBackground">#FCFBF8</item>
+    </style>
+</resources>

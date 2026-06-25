@@ -1,0 +1,17 @@
+{
+  "name": "king-wms",
+  "private": true,
+  "packageManager": "pnpm@9.15.9",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "db:generate": "pnpm --filter @king-wms/database generate",
+    "db:migrate": "pnpm --filter @king-wms/database migrate",
+    "db:deploy": "pnpm --filter @king-wms/database deploy",
+    "db:studio": "pnpm --filter @king-wms/database studio",
+    "db:seed": "pnpm --filter @king-wms/api seed"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.0"
+  }
+}

@@ -1,0 +1,206 @@
+// WMS — Prisma schema (PostgreSQL)
+// Notes:
+//  - Migrated from SQLite to PostgreSQL. Status/type fields are kept as validated
+//    Strings (not native enums) and JSON as String, so the application contract is
+//    unchanged by the DB switch; these can be promoted to native pg types later.
+//  - All quantities are Decimal to avoid floating-point drift on meters/pieces.
+//  - StockLevel is a materialized cache; the StockMovementLine ledger is the truth.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique
+  passwordHash String
+  fullName     String
+  role         String   @default("OPERATOR") // ADMIN | OPERATOR
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  movements     StockMovement[]
+  auditLogs     AuditLog[]
+  countsCreated CountSession[] @relation("CountCreatedBy")
+  countsPosted  CountSession[] @relation("CountPostedBy")
+  countLines    CountLine[]    @relation("CountedBy")
+}
+
+model Warehouse {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  name      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  bins   Bin[]
+  counts CountSession[]
+}
+
+model Bin {
+  id          Int      @id @default(autoincrement())
+  warehouseId Int
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  code        String
+  description String?
+  type        String   @default("STORAGE") // RECEIVING | STORAGE | QUARANTINE | RETURNS
+  barcode     String   @unique
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  stockLevels   StockLevel[]
+  movementLines StockMovementLine[]
+  countLines    CountLine[]
+
+  @@unique([warehouseId, code])
+}
+
+model Item {
+  id            Int      @id @default(autoincrement())
+  itemNumber    String   @unique
+  description   String
+  uom           String
+  category      String?
+  inventoryType String?  // RM | WIP | FG
+  minStock      Decimal?
+  lotControlled Boolean  @default(true)
+  barcode       String   @unique
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  lots          Lot[]
+  stockLevels   StockLevel[]
+  movementLines StockMovementLine[]
+  countLines    CountLine[]
+}
+
+model Lot {
+  id           Int       @id @default(autoincrement())
+  itemId       Int
+  item         Item      @relation(fields: [itemId], references: [id])
+  lotCode      String
+  receivedDate DateTime?
+  supplier     String?
+  note         String?
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+
+  stockLevels   StockLevel[]
+  movementLines StockMovementLine[]
+  countLines    CountLine[]
+
+  @@unique([itemId, lotCode])
+}
+
+model StockLevel {
+  id        Int      @id @default(autoincrement())
+  itemId    Int
+  binId     Int
+  lotId     Int
+  quantity  Decimal  @default(0)
+  // Aging: when the stock currently at this location first arrived (reset when a
+  // depleted location is re-occupied) and the most recent receipt into it.
+  // Also the FIFO basis — oldest firstReceivedAt is picked first.
+  firstReceivedAt DateTime?
+  lastReceivedAt  DateTime?
+  updatedAt DateTime @updatedAt
+
+  item Item @relation(fields: [itemId], references: [id])
+  bin  Bin  @relation(fields: [binId], references: [id])
+  lot  Lot  @relation(fields: [lotId], references: [id])
+
+  @@unique([itemId, binId, lotId])
+  @@index([binId])
+  @@index([itemId])
+}
+
+model StockMovement {
+  id              Int      @id @default(autoincrement())
+  type            String   // GR | GI | PUTAWAY | TRANSFER | COUNT_ADJUST
+  reference       String?
+  note            String?
+  userId          Int
+  user            User     @relation(fields: [userId], references: [id])
+  clientRequestId String?  @unique
+  createdAt       DateTime @default(now())
+
+  lines StockMovementLine[]
+
+  @@index([type])
+  @@index([createdAt])
+}
+
+model StockMovementLine {
+  id         Int           @id @default(autoincrement())
+  movementId Int
+  movement   StockMovement @relation(fields: [movementId], references: [id], onDelete: Cascade)
+  itemId     Int
+  item       Item          @relation(fields: [itemId], references: [id])
+  binId      Int
+  bin        Bin           @relation(fields: [binId], references: [id])
+  lotId      Int
+  lot        Lot           @relation(fields: [lotId], references: [id])
+  qtyDelta   Decimal
+
+  @@index([movementId])
+  @@index([itemId])
+  @@index([binId])
+}
+
+model CountSession {
+  id          Int        @id @default(autoincrement())
+  warehouseId Int?
+  warehouse   Warehouse? @relation(fields: [warehouseId], references: [id])
+  status      String     @default("OPEN") // OPEN | COUNTING | COMPLETED
+  note        String?
+  createdById Int
+  createdBy   User       @relation("CountCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime   @default(now())
+  postedById  Int?
+  postedBy    User?      @relation("CountPostedBy", fields: [postedById], references: [id])
+  postedAt    DateTime?
+
+  lines CountLine[]
+}
+
+model CountLine {
+  id          Int          @id @default(autoincrement())
+  sessionId   Int
+  session     CountSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  itemId      Int
+  item        Item         @relation(fields: [itemId], references: [id])
+  binId       Int
+  bin         Bin          @relation(fields: [binId], references: [id])
+  lotId       Int
+  lot         Lot          @relation(fields: [lotId], references: [id])
+  systemQty   Decimal
+  countedQty  Decimal?
+  variance    Decimal?
+  status      String       @default("PENDING") // PENDING | COUNTED | POSTED | RECOUNT
+  countedById Int?
+  countedBy   User?        @relation("CountedBy", fields: [countedById], references: [id])
+  countedAt   DateTime?
+
+  @@unique([sessionId, itemId, binId, lotId])
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  entity    String
+  entityId  String?
+  detail    String? // JSON string
+  createdAt DateTime @default(now())
+
+  @@index([entity])
+  @@index([createdAt])
+}

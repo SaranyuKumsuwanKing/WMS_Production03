@@ -1,0 +1,12 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Simple warehouse box mark, centered in the adaptive-icon safe zone. -->
+    <group android:translateX="30" android:translateY="30">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M24,4 L44,14 L44,34 L24,44 L4,34 L4,14 Z M24,9 L11,15.5 L24,22 L37,15.5 Z M8,18 L8,31.5 L22,38.5 L22,25 Z M40,18 L26,25 L26,38.5 L40,31.5 Z" />
+    </group>
+</vector>
